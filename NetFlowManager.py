@@ -105,7 +105,7 @@ class NetFlowManager(object):
                         else:
                             continue
                     else:
-                        network_name = self.getNetworkNameByLongID(i["resource_id"])
+                        network_name, ipaddr = self.getNetworkNameByLongID(i["resource_id"])
                         NETWORK_NAME[i["resource_id"]] = network_name
                         if network_name and self.networkIsMatch(network_name):
                             max_in_rate += i["counter_volume"]
@@ -127,7 +127,7 @@ class NetFlowManager(object):
                         else:
                             continue
                     else:
-                        network_name = self.getNetworkNameByLongID(i["resource_id"])
+                        network_name, ipaddr = self.getNetworkNameByLongID(i["resource_id"])
                         NETWORK_NAME[i["resource_id"]] = network_name
                         if network_name and self.networkIsMatch(network_name):
                             max_out_rate += i["counter_volume"]
