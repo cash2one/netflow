@@ -14,41 +14,25 @@ from multiprocessing import Process
 import keystoneclient.v2_0.client
 import novaclient.v1_1.client 
 import neutronclient.v2_0.client
+import argparse
 
 NETWORK_NAME = {}
 
 LOG = mana_log.GetLog('net_flow_manager', __name__)
 
+
+
 class NetFlowManager(object):
     def __init__(self, region):
         self.project_id_list = []
-        self.region_name_dict = {
-            
-                                  "Nanhui": "172.30.250.135",
-                                  "zhenru": "172.29.203.64",
-                                  "beijing": "172.28.5.122"
-        }
-        self.mhost = self.region_name_dict[region]
         self.region = region
-        self.mconn = Connection(self.mhost, 27017)
-        self.db = self.mconn['ceilometer']
-        self.conn = MySQLdb.connect(host='localhost',
-                                    user='cloud',
-                                    passwd='test',
-                                    port=6020)
-        self.conn.select_db('netflow')
-        self.cur = self.conn.cursor()
-        self.keyc = keystoneclient.v2_0.client.Client(username='admin',
-                                                password='test',
-                                                tenant_name='admin',
-                                                auth_url='http://172.30.251.13:35357/v2.0/')
-        self.novac = novaclient.v1_1.client.Client(username='admin', api_key='test',
-                                                     project_id='admin', region_name='%s' % self.region, 
-                                                     auth_url='http://172.30.251.13:5000/v2.0/')
-        self.neutronc = neutronclient.v2_0.client.Client(username='admin', password='test',
-                                                         tenant_name='admin', region_name='%s' % self.region, 
-                                                         auth_url='http://172.30.251.13:5000/v2.0/')
-        self.net_list = self.neutronc.list_networks()["networks"]
+        self.db = DB
+        self.conn = CONN
+        self.cur = CONN.cursor()
+        self.keyc = KEYC
+        self.novac = NOVAC
+        self.neutronc = NEUTRONC
+        self.net_list = NET_LIST
 
     def readConf(self):
         cf = ConfigParser.ConfigParser()
@@ -98,19 +82,11 @@ class NetFlowManager(object):
                 q = self.db.meter.find({"project_id": project_id, "counter_name": "network.incoming.bytes.rate",
                                         "timestamp": {"$lte": end_time_obj, "$gte": begin_time_obj}})
                 for i in list(q):
-                    if NETWORK_NAME.has_key(i["resource_id"]):
-                        network_name = NETWORK_NAME[i["resource_id"]]
-                        if network_name and self.networkIsMatch(network_name):
-                            max_in_rate += i["counter_volume"]
-                        else:
-                            continue
+                    network_name, ipaddr = self.getNetworkNameByLongID(i["resource_id"])
+                    if network_name and self.networkIsMatch(network_name):
+                        max_in_rate += i["counter_volume"]
                     else:
-                        network_name, ipaddr = self.getNetworkNameByLongID(i["resource_id"])
-                        NETWORK_NAME[i["resource_id"]] = network_name
-                        if network_name and self.networkIsMatch(network_name):
-                            max_in_rate += i["counter_volume"]
-                        else:
-                            continue
+                        continue
 
             except IndexError:
                 print 'project statistics list failed'
@@ -120,19 +96,11 @@ class NetFlowManager(object):
                 q = self.db.meter.find({"project_id": project_id, "counter_name": "network.outgoing.bytes.rate",
                                         "timestamp": {"$lte": end_time_obj, "$gte": begin_time_obj}})
                 for i in list(q):
-                    if NETWORK_NAME.has_key(i["resource_id"]):
-                        network_name = NETWORK_NAME[i["resource_id"]]
-                        if network_name and self.networkIsMatch(network_name):
-                            max_out_rate += i["counter_volume"]
-                        else:
-                            continue
+                    network_name, ipaddr = self.getNetworkNameByLongID(i["resource_id"])
+                    if network_name and self.networkIsMatch(network_name):
+                        max_out_rate += i["counter_volume"]
                     else:
-                        network_name, ipaddr = self.getNetworkNameByLongID(i["resource_id"])
-                        NETWORK_NAME[i["resource_id"]] = network_name
-                        if network_name and self.networkIsMatch(network_name):
-                            max_out_rate += i["counter_volume"]
-                        else:
-                            continue
+                        continue
 
             except IndexError:
                 LOG.error('project statistics list failed')
@@ -429,12 +397,8 @@ def getTimeList(begin_time, end_time):
 def works(func, region, p_id):
     proc_record = []
     delta = datetime.timedelta(days=1)
-    now = datetime.datetime.utcnow()
-    yesterday = now - delta
-    today_begin = now.strftime('%Y-%m-%d 00:00:00')
-    yesterday_begin = yesterday.strftime('%Y-%m-%d 00:00:00')
-    begin_time = datetime.datetime.strptime(yesterday_begin, '%Y-%m-%d %H:%M:%S')
-    today = datetime.datetime.strptime(today_begin, '%Y-%m-%d %H:%M:%S')
+    begin_time = datetime.datetime.strptime(BEGIN_DATE, '%Y-%m-%d %H:%M:%S')
+    today = datetime.datetime.strptime(END_DATE, '%Y-%m-%d %H:%M:%S')
     end_time = begin_time + delta
 
     # define $begin_time and $today can change range date
@@ -468,20 +432,58 @@ def updateMonthData(region, month):
 
 
 if __name__ == '__main__':
-    # insert netrate_project use Process()
-    # insert netflow and netrate_detail use Thread()
-    if len(sys.argv) == 2:
-        LOG.info('########################## Start ###########################')
-        region = sys.argv[1].strip()
-        # begin_time = datetime.datetime.strptime('2015-05-01 00:00:00','%Y-%m-%d %H:%M:%S')
-        instance = NetFlowManager(region)
-        p_id = instance.getProjectList()
-        works(tasks, region, p_id)
-        month = datetime.datetime.utcnow().strftime('%Y-%m')
-        updateMonthData(region, month)
-        LOG.info('######################### End ############################')
+    REGION = {
+    "Nanhui": "172.30.250.135",
+    "zhenru": "172.29.203.64",
+    "beijing": "172.28.5.122"
+    }
 
-    if len(sys.argv) == 3:
-        region = sys.argv[1].strip()
-        month = sys.argv[2].strip()
-        updateMonthData(region, month)
+    CONN = MySQLdb.connect(host='localhost',
+                           user='cloud',
+                           passwd='test',
+                           port=6020)
+    CONN.select_db('netflow')
+
+    delta = datetime.timedelta(days=1)
+    now = datetime.datetime.utcnow()
+    yesterday = now - delta
+    today_begin = now.strftime('%Y-%m-%d 00:00:00')
+    yesterday_begin = yesterday.strftime('%Y-%m-%d 00:00:00')
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-r', '--region', help='Which region selected')
+    parser.add_argument('-m', '--month', help='Update month max data, do not add data')
+    parser.add_argument('-f', '--fromdate', help='Specifies the start time of the complement data',
+                        default=yesterday_begin)
+    parser.add_argument('-t', '--todate', help='Specifies the end time of the complement data',
+                        default=today_begin)
+    args = parser.parse_args()
+    BEGIN_DATE = args.fromdate
+    END_DATE = args.todate
+    # mongodb connection obj
+    mhost = REGION[args.region]
+    mconn = Connection(mhost, 27017)
+    DB = mconn['ceilometer']
+
+    # openstack obj
+    KEYC = keystoneclient.v2_0.client.Client(username='admin',
+                                                password='test',
+                                                tenant_name='admin',
+                                                auth_url='http://172.30.251.13:35357/v2.0/')
+    NOVAC = novaclient.v1_1.client.Client(username='admin', api_key='test',
+                                                 project_id='admin', region_name='%s' % args.region,
+                                                 auth_url='http://172.30.251.13:5000/v2.0/')
+    NEUTRONC = neutronclient.v2_0.client.Client(username='admin', password='test',
+                                                     tenant_name='admin', region_name='%s' % args.region,
+                                                     auth_url='http://172.30.251.13:5000/v2.0/')
+    NET_LIST = NEUTRONC.list_networks()["networks"]
+
+    if args.month:
+        updateMonthData(args.region, args.month)
+    else:
+        LOG.info('########################## Start ###########################')
+        instance = NetFlowManager(args.region)
+        p_id = instance.getProjectList()
+        works(tasks, args.region, p_id)
+        month = datetime.datetime.utcnow().strftime('%Y-%m')
+        updateMonthData(args.region, month)
+        LOG.info('######################### End ############################')
