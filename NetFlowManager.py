@@ -54,6 +54,16 @@ class NetFlowManager(object):
             self.project_id_list.append(i.id)
         return self.project_id_list
 
+    '''
+    Nanhui use this function
+    def getProjectList(self):
+        if not self.project_id_list
+            r = self.db.project.find()
+            for i in list(r):
+                self.project_id_list.append(i["_id"])
+        return self.project_id_list
+    '''
+
     def get_instance_long_id_by_project_id(self, project_id):
         allLongID = []
         for i in list(
